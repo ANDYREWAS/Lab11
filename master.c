@@ -1,9 +1,11 @@
 /*
- * File:   Lab11.c
+ * File:   master.c
  * Author: Josea
  *
- * Created on 11 de mayo de 2022, 04:59 PM
+ * Created on 11 de mayo de 2022, 08:52 PM
  */
+
+
 
 // CONFIG1
 #pragma config FOSC = INTRC_NOCLKOUT// Oscillator Selection bits (INTOSCIO oscillator: I/O function on RA6/OSC2/CLKOUT pin, I/O function on RA7/OSC1/CLKIN)
@@ -35,6 +37,7 @@
 /*------------------------------------------------------------------------------
  * VARIABLES 
  ------------------------------------------------------------------------------*/
+uint8_t contador = 0, pot = 0;
 
 
 /*------------------------------------------------------------------------------
@@ -46,23 +49,20 @@ void setup(void);
  * INTERRUPCIONES 
  ------------------------------------------------------------------------------*/
 void __interrupt() isr (void){
-    
+    //ADC
     if(PIR1bits.ADIF){              // Fue interrupción del ADC?
         if(ADCON0bits.CHS == 0){    // Verificamos sea AN0 el canal seleccionado
-            SSPBUF = ADRESH;         // guardamos los bits superiores en el registro para enviarlo 
+            pot = ADRESH;         // guardamos los bits superiores en el registro para enviarlo 
            
         }
         
         PIR1bits.ADIF = 0;          // Limpiamos bandera de interrupción
     }
-    if(PIR1bits.SSPIF){             // ¿Recibió datos el esclavo?
-        PORTD = SSPBUF;             // Mostramos valor recibido en el PORTD
-        PIR1bits.SSPIF = 0;         // Limpiamos bandera de interrupción
-    }
     
     
-    return;
+    
 }
+
 
 /*------------------------------------------------------------------------------
  * CICLO PRINCIPAL
@@ -71,23 +71,23 @@ void main(void) {
     setup();
     while(1){
         //ADC 
-         if(ADCON0bits.GO == 0){             // No hay proceso de conversion
+        if(ADCON0bits.GO == 0){             // No hay proceso de conversion
             ADCON0bits.GO = 1;              // Iniciamos proceso de conversión
          }
-        // El RE0 se configuró como entrada y si está encendida, quiere decir
-        //  que el pic debe funcionar en modo maestro
-        if(PORTEbits.RE0){          // ¿Es maestro?      
-            __delay_ms(1000);       // Esperamos un segundo para mandar datos
-            if(SSPSTATbits.BF){     // Revisamos que no haya comunicación en proceso
-                SSPBUF = PORTD;      // Movemos el valor del contador para enviarlo
-              
-            }
-        }
+        PORTAbits.RA7 = 1;
+        __delay_ms(10);
+        PORTAbits.RA7 = 0;
+        
+  
+       
+        SSPBUF = pot;
+        while(SSPSTATbits.BF){}
+        PORTB = SSPBUF;
+        __delay_ms(1000);
     }
     return;
 }
     
-
 /*------------------------------------------------------------------------------
  * CONFIGURACION 
  ------------------------------------------------------------------------------*/
@@ -104,61 +104,34 @@ void setup(void){
     TRISE = 0b00000001;         //RE0 como selector master/slave
     PORTE = 0; 
     
-    
+    TRISC = 0b00010000;         // -> SDI entrada, SCK y SD0 como salida
+    PORTC = 0;
 
-    
+    TRISB = 0;
+    PORTB = 0;
 
-    // Configuración de SPI
-    // Configs de Maestro
-    if(PORTEbits.RE0){
-        TRISC = 0b00010000;         // -> SDI entrada, SCK y SD0 como salida
-        PORTC = 0;
-       
-        // SSPCON <5:0>
-        SSPCONbits.SSPM = 0b0000;   // -> SPI Maestro, Reloj -> Fosc/4 (250kbits/s)
-        SSPCONbits.CKP = 0;         // -> Reloj inactivo en 0
-        SSPCONbits.SSPEN = 1;       // -> Habilitamos pines de SPI
-        // SSPSTAT<7:6>
-        SSPSTATbits.CKE = 1;        // -> Dato enviado cada flanco de subida
-        SSPSTATbits.SMP = 1;        // -> Dato al final del pulso de reloj
-        
-        
-        //ADC
-         ANSEL = 0b00000001; // AN0 como entrada analógica
-         ANSELH = 0;         // I/O digitales)
-    
-         
-         
-         ADCON0bits.CHS = 0b0000;    // Seleccionamos AN0
-         ADCON1bits.ADFM = 0;        // Justificado a la izquierda
-         ADCON0bits.ADON = 1;        // Habilitamos modulo ADC
-         __delay_us(40);
-         
-         PIR1bits.ADIF = 0;          // Limpiamos bandera de int. ADC
-         PIE1bits.ADIE = 1;          // Habilitamos int. de ADC
-         INTCONbits.PEIE = 1;        // Habilitamos int. de perifericos
-         INTCONbits.GIE = 1;         // Habilitamos int. globales
-    }
-    // Configs del esclavo
-    else{
-        TRISC = 0b00011000; // -> SDI y SCK entradas, SD0 como salida
-        PORTC = 0;
-        TRISD = 0;
-        PORTD = 0;
-     
-       // SSPCON <5:0>
-        SSPCONbits.SSPM = 0b0100;   // -> SPI Esclavo, SS hablitado
-        SSPCONbits.CKP = 0;         // -> Reloj inactivo en 0
-        SSPCONbits.SSPEN = 1;       // -> Habilitamos pines de SPI
-        // SSPSTAT<7:6>
-        SSPSTATbits.CKE = 1;        // -> Dato enviado cada flanco de subida
-        SSPSTATbits.SMP = 0;        // -> Dato al final del pulso de reloj
-        
-        PIR1bits.SSPIF = 0;         // Limpiamos bandera de SPI
-        PIE1bits.SSPIE = 1;         // Habilitamos int. de SPI
-        INTCONbits.PEIE = 1;
-        INTCONbits.GIE = 1;
-        
-        
-    }
+    // SSPCON <5:0>
+    SSPCONbits.SSPM = 0b0000;   // -> SPI Maestro, Reloj -> Fosc/4 (250kbits/s)
+    SSPCONbits.CKP = 0;         // -> Reloj inactivo en 0
+    SSPCONbits.SSPEN = 1;       // -> Habilitamos pines de SPI
+    // SSPSTAT<7:6>
+    SSPSTATbits.CKE = 1;        // -> Dato enviado cada flanco de subida
+    SSPSTATbits.SMP = 1;        // -> Dato al final del pulso de reloj
+
+
+    //ADC
+     ANSEL = 0b00000001; // AN0 como entrada analógica
+     ANSELH = 0;         // I/O digitales)
+
+
+
+     ADCON0bits.CHS = 0b0000;    // Seleccionamos AN0
+     ADCON1bits.ADFM = 0;        // Justificado a la izquierda
+     ADCON0bits.ADON = 1;        // Habilitamos modulo ADC
+     __delay_us(40);
+
+     PIR1bits.ADIF = 0;          // Limpiamos bandera de int. ADC
+     PIE1bits.ADIE = 1;          // Habilitamos int. de ADC
+     INTCONbits.PEIE = 1;        // Habilitamos int. de perifericos
+     INTCONbits.GIE = 1;         // Habilitamos int. globales
 }

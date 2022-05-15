@@ -1,9 +1,10 @@
 /*
- * File:   Lab11.c
+ * File:   Lab_presencial-_-.c
  * Author: Josea
  *
- * Created on 11 de mayo de 2022, 04:59 PM
+ * Created on 11 de mayo de 2022, 07:13 PM
  */
+
 
 // CONFIG1
 #pragma config FOSC = INTRC_NOCLKOUT// Oscillator Selection bits (INTOSCIO oscillator: I/O function on RA6/OSC2/CLKOUT pin, I/O function on RA7/OSC1/CLKIN)
@@ -35,7 +36,7 @@
 /*------------------------------------------------------------------------------
  * VARIABLES 
  ------------------------------------------------------------------------------*/
-
+uint8_t contador = 0;
 
 /*------------------------------------------------------------------------------
  * PROTOTIPO DE FUNCIONES 
@@ -50,16 +51,33 @@ void __interrupt() isr (void){
     if(PIR1bits.ADIF){              // Fue interrupción del ADC?
         if(ADCON0bits.CHS == 0){    // Verificamos sea AN0 el canal seleccionado
             SSPBUF = ADRESH;         // guardamos los bits superiores en el registro para enviarlo 
-           
+           // PORTB = SSPBUF;
         }
         
         PIR1bits.ADIF = 0;          // Limpiamos bandera de interrupción
     }
     if(PIR1bits.SSPIF){             // ¿Recibió datos el esclavo?
         PORTD = SSPBUF;             // Mostramos valor recibido en el PORTD
+        SSPBUF = contador;
         PIR1bits.SSPIF = 0;         // Limpiamos bandera de interrupción
+        
     }
-    
+     
+    if(INTCONbits.RBIF){                // Fue interrupci n del PORTB?
+            
+        if (!PORTBbits.RB0){
+            contador++;              // Incremento del contador
+            PORTA = contador;
+            INTCONbits.RBIF = 0;
+        }
+
+        if (!PORTBbits.RB1){
+            contador--;              // Decremento del contador
+            PORTA = contador;
+            INTCONbits.RBIF = 0; 
+        }
+   
+    }
     
     return;
 }
@@ -71,19 +89,25 @@ void main(void) {
     setup();
     while(1){
         //ADC 
-         if(ADCON0bits.GO == 0){             // No hay proceso de conversion
+        if(ADCON0bits.GO == 0){             // No hay proceso de conversion
             ADCON0bits.GO = 1;              // Iniciamos proceso de conversión
          }
         // El RE0 se configuró como entrada y si está encendida, quiere decir
         //  que el pic debe funcionar en modo maestro
-        if(PORTEbits.RE0){          // ¿Es maestro?      
-            __delay_ms(1000);       // Esperamos un segundo para mandar datos
-            if(SSPSTATbits.BF){     // Revisamos que no haya comunicación en proceso
-                SSPBUF = PORTD;      // Movemos el valor del contador para enviarlo
-              
-            }
+        
+        PORTAbits.RA7 = 1;
+        __delay_ms(1);
+        PORTAbits.RA7 = 0;
+     
+            
+        
+        
+        while(SSPSTATbits.BF){     // Revisamos que no haya comunicación en proceso
+        PORTB = SSPBUF;
         }
+        
     }
+    
     return;
 }
     
@@ -114,6 +138,9 @@ void setup(void){
         TRISC = 0b00010000;         // -> SDI entrada, SCK y SD0 como salida
         PORTC = 0;
        
+        TRISB = 0;
+        PORTB = 0;
+    
         // SSPCON <5:0>
         SSPCONbits.SSPM = 0b0000;   // -> SPI Maestro, Reloj -> Fosc/4 (250kbits/s)
         SSPCONbits.CKP = 0;         // -> Reloj inactivo en 0
@@ -143,9 +170,10 @@ void setup(void){
     else{
         TRISC = 0b00011000; // -> SDI y SCK entradas, SD0 como salida
         PORTC = 0;
-        TRISD = 0;
-        PORTD = 0;
-     
+        
+        TRISB = 0;
+        PORTB = 0;
+        
        // SSPCON <5:0>
         SSPCONbits.SSPM = 0b0100;   // -> SPI Esclavo, SS hablitado
         SSPCONbits.CKP = 0;         // -> Reloj inactivo en 0
